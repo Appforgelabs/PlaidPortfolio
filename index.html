@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Plaid Portfolio</title>
+    <style>
+        /* Matte black theme with subtle glows and polish */
+        body {
+            background-color: #111;
+            color: #eee;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .tabnav {
+            display: flex;
+            background: #222;
+            border-bottom: 1px solid #333;
+        }
+        .tab {
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .tab:hover {
+            background: #333;
+        }
+        .tab.active {
+            background: #444;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+        .content {
+            display: none;
+            padding: 20px;
+        }
+        .content.active {
+            display: block;
+        }
+        #activity {
+            display: flex;
+        }
+        .buy-column, .sell-column {
+            width: 50%;
+            min-height: 500px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .divider {
+            width: 2px;
+            background: linear-gradient(to bottom, #fff, #aaa);
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        }
+        .tile {
+            padding: 15px;
+            margin: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            cursor: grab;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: bounce 0.3s ease-in-out;
+        }
+        .tile:active {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+        @keyframes bounce {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0); }
+        }
+        #top-bar {
+            background: #222;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #333;
+            text-align: left;
+        }
+        #modal {
+            position: fixed;
+            top: 20%;
+            left: 30%;
+            background: #222;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+            z-index: 10;
+        }
+        input, select, button {
+            background: #333;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 5px;
+            margin: 5px 0;
+        }
+        button {
+            cursor: pointer;
+        }
+        canvas {
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 5px;
+        }
+        /* More polish: glow on hover */
+        input:focus, select:focus {
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <nav class="tabnav">
+        <div class="tab active" onclick="switchTab('dashboard')">Dashboard</div>
+        <div class="tab" onclick="switchTab('activity')">Activity</div>
+        <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+        <div class="tab" onclick="switchTab('simulator')">Margin Simulator</div>
+        <div class="tab" onclick="switchTab('settings')">Settings</div>
+    </nav>
+    <div id="dashboard" class="content active">
+        <div id="top-bar">Cash: <span id="cash">0</span> | Remaining Margin: <span id="margin">0</span></div>
+        <table id="portfolio-list">
+            <thead><tr><th>Ticker</th><th>Quantity</th><th>Avg Cost</th><th>Unrealized P/L</th></tr></thead>
+            <tbody></tbody>
+        </table>
+        <canvas id="mini-chart" width="400" height="200"></canvas>
+    </div>
+    <div id="activity" class="content">
+        <div class="buy-column" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        <div class="divider"></div>
+        <div class="sell-column" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        <button onclick="addNewTrade()">+ Add Trade</button>
+    </div>
+    <div id="analytics" class="content">
+        <div id="calendar" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px;"></div>
+        <canvas id="radar-chart" width="400" height="400"></canvas>
+        <canvas id="pie-ticker" width="200" height="200"></canvas>
+        <canvas id="pie-asset" width="200" height="200"></canvas>
+        <canvas id="spider-web" width="400" height="400"></canvas>
+    </div>
+    <div id="simulator" class="content">
+        <label>Market Drop: <span id="drop-value">5</span>%</label>
+        <input type="range" id="drop-slider" min="5" max="90" value="5" oninput="document.getElementById('drop-value').innerText = this.value; simulateDrop(this.value / 100)">
+        <div id="equity-line"></div>
+        <div id="suggestions"></div>
+    </div>
+    <div id="settings" class="content">
+        <input id="starting-cash" placeholder="Starting Cash">
+        <input id="margin-limit" placeholder="Margin Limit">
+        <select id="api-type">
+            <option>None</option>
+            <option>Alpha Vantage</option>
+            <option>Finnhub</option>
+        </select>
+        <input id="api-key" placeholder="API Key">
+        <button onclick="saveSettings()">Save</button>
+        <button onclick="toggleDemo()">Toggle Demo Mode</button>
+        <button onclick="exportCSV()">Export CSV</button>
+        <input type="file" id="import-file" onchange="importCSV(this.files[0])">
+    </div>
+    <canvas id="confetti-canvas" style="position: absolute; top:0; left:0; pointer-events: none; width: 100%; height: 100%;"></canvas>
+    <div id="modal" style="display:none;">
+        <form id="trade-form">
+            <input type="date" id="trade-date">
+            <input id="trade-ticker" placeholder="Ticker">
+            <input type="number" id="trade-qty" placeholder="Quantity">
+            <input type="number" id="trade-price" placeholder="Price/Premium">
+            <select id="trade-type">
+                <option>Stock</option>
+                <option>Option</option>
+            </select>
+            <div id="option-fields" style="display:none;">
+                <input type="number" id="trade-strike" placeholder="Strike">
+                <input type="date" id="trade-expiry">
+                <select id="trade-callput">
+                    <option>Call</option>
+                    <option>Put</option>
+                </select>
+            </div>
+            <select id="trade-action">
+                <option>Buy</option>
+                <option>Sell</option>
+            </select>
+            <button type="button" onclick="saveTrade()">Save</button>
+            <button type="button" onclick="hideModal()">Cancel</button>
+        </form>
+    </div>
+    <script>
+        // Tab switching
+        function switchTab(tabId) {
+            document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            loadDataForTab(tabId);
+        }
+
+        // IndexedDB setup
+        let db;
+        const request = indexedDB.open('PlaidPortfolio', 1);
+        request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            db.createObjectStore('trades', { autoIncrement: true });
+            db.createObjectStore('settings', { keyPath: 'key' });
+            db.createObjectStore('currentPrices', { keyPath: 'ticker' });
+        };
+        request.onsuccess = (event) => {
+            db = event.target.result;
+            loadSettings();
+            loadTrades();
+        };
+        request.onerror = (event) => console.error('IndexedDB error:', event.target.error);
+
+        // Settings
+        let settings = { startingCash: 100000, marginLimit: 50000, apiType: 'None', apiKey: '', demoMode: false };
+        let cash = 100000;
+        let trades = [];
+        let holdings = {};
+        let currentPrices = {};
+        let confettos = [];
+
+        function loadSettings() {
+            const tx = db.transaction('settings');
+            const store = tx.objectStore('settings');
+            store.getAll().onsuccess = (event) => {
+                event.target.result.forEach(item => settings[item.key] = item.value);
+                cash = settings.startingCash;
+                updateTopBar();
+                if (settings.demoMode) loadDemoData();
+            };
+        }
+
+        function saveSettings() {
+            settings.startingCash = parseFloat(document.getElementById('starting-cash').value) || settings.startingCash;
+            settings.marginLimit = parseFloat(document.getElementById('margin-limit').value) || settings.marginLimit;
+            settings.apiType = document.getElementById('api-type').value;
+            settings.apiKey = document.getElementById('api-key').value;
+            const tx = db.transaction('settings', 'readwrite');
+            const store = tx.objectStore('settings');
+            Object.entries(settings).forEach(([key, value]) => store.put({ key, value }));
+            cash = settings.startingCash;
+            updateTopBar();
+        }
+
+        // Trades and holdings
+        function loadTrades() {
+            const tx = db.transaction('trades');
+            const store = tx.objectStore('trades');
+            store.getAll().onsuccess = (event) => {
+                trades = event.target.result;
+                updateHoldings();
+                loadDataForTab(document.querySelector('.content.active').id);
+            };
+        }
+
+        function saveTrade() {
+            const trade = {
+                date: document.getElementById('trade-date').value,
+                ticker: document.getElementById('trade-ticker').value.toUpperCase(),
+                qty: parseFloat(document.getElementById('trade-qty').value),
+                price: parseFloat(document.getElementById('trade-price').value),
+                type: document.getElementById('trade-type').value,
+                action: document.getElementById('trade-action').value
+            };
+            if (trade.type === 'Option') {
+                trade.strike = parseFloat(document.getElementById('trade-strike').value);
+                trade.expiry = document.getElementById('trade-expiry').value;
+                trade.isCall = document.getElementById('trade-callput').value === 'Call';
+            }
+            const tx = db.transaction('trades', 'readwrite');
+            const store = tx.objectStore('trades');
+            store.add(trade).onsuccess = () => {
+                loadTrades();
+                hideModal();
+                if (trades.length >= 5) triggerAdvisor();
+            };
+        }
+
+        function updateHoldings() {
+            holdings = {};
+            cash = settings.startingCash;
+            trades.sort((a, b) => new Date(a.date) - new Date(b.date));
+            trades.forEach(trade => {
+                const key = trade.type === 'Stock' ? trade.ticker : `${trade.ticker}-${trade.strike}-${trade.expiry}-${trade.isCall ? 'Call' : 'Put'}`;
+                if (!holdings[key]) holdings[key] = { ...trade, qty: 0, totalCost: 0 };
+                const sign = trade.action === 'Buy' ? 1 : -1;
+                holdings[key].qty += sign * trade.qty;
+                holdings[key].totalCost += sign * trade.qty * trade.price;
+                if (holdings[key].qty > 0) holdings[key].avgCost = holdings[key].totalCost / holdings[key].qty;
+                else delete holdings[key];
+                cash -= sign * trade.qty * trade.price;
+            });
+        }
+
+        // Modal
+        function addNewTrade() {
+            document.getElementById('trade-form').reset();
+            document.getElementById('trade-date').valueAsDate = new Date();
+            document.getElementById('trade-action').value = 'Buy';
+            showModal();
+        }
+
+        function showModal() {
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('option-fields').style.display = document.getElementById('trade-type').value === 'Option' ? 'block' : 'none';
+            document.getElementById('trade-type').onchange = (e) => document.getElementById('option-fields').style.display = e.target.value === 'Option' ? 'block' : 'none';
+        }
+
+        function hideModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // API for prices and volatility
+        async function updateCurrentPrices() {
+            if (settings.apiType === 'None') return;
+            const tickers = [...new Set(Object.values(holdings).map(h => h.ticker))];
+            for (let ticker of tickers) {
+                let url;
+                if (settings.apiType === 'Alpha Vantage') {
+                    url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${settings.apiKey}`;
+                } else if (settings.apiType === 'Finnhub') {
+                    url = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${settings.apiKey}`;
+                }
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (settings.apiType === 'Alpha Vantage' && data['Global Quote']) {
+                        currentPrices[ticker] = parseFloat(data['Global Quote']['05. price']);
+                    } else if (settings.apiType === 'Finnhub') {
+                        currentPrices[ticker] = data.c;
+                    }
+                } catch (e) {
+                    console.error('API error:', e);
+                }
+            }
+        }
+
+        // Black-Scholes lite
+        function cdf(x) {
+            return (1.0 + Math.erf(x / Math.sqrt(2.0))) / 2.0;
+        }
+
+        function blackScholes(S, K, T, r, sigma, isCall) {
+            if (T <= 0) return isCall ? Math.max(S - K, 0) : Math.max(K - S, 0); // intrinsic for expired
+            let d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+            let d2 = d1 - sigma * Math.sqrt(T);
+            if (isCall) {
+                return S * cdf(d1) - K * Math.exp(-r * T) * cdf(d2);
+            } else {
+                return K * Math.exp(-r * T) * cdf(-d2) - S * cdf(-d1);
+            }
+        }
+
+        function estimateOptionValue(h) {
+            const today = new Date();
+            const expiry = new Date(h.expiry);
+            const days = (expiry - today) / (1000 * 60 * 60 * 24);
+            const T = days / 365;
+            const S = currentPrices[h.ticker] || h.price;
+            const K = h.strike;
+            const r = 0.05;
+            const sigma = 0.3; // default, todo fetch IV if possible
+            return blackScholes(S, K, T, r, sigma, h.isCall);
+        }
+
+        // Load data for tabs
+        async function loadDataForTab(tab) {
+            await updateCurrentPrices();
+            if (tab === 'dashboard') {
+                const tbody = document.getElementById('portfolio-list').querySelector('tbody');
+                tbody.innerHTML = '';
+                let totalPL = 0;
+                Object.values(holdings).forEach(h => {
+                    let currentValue = h.type === 'Stock' ? (currentPrices[h.ticker] || h.avgCost) : estimateOptionValue(h);
+                    const pl = (currentValue - h.avgCost) * h.qty;
+                    totalPL += pl;
+                    const row = tbody.insertRow();
+                    row.innerHTML = `<td>${h.ticker}</td><td>${h.qty}</td><td>${h.avgCost.toFixed(2)}</td><td style="color: ${pl > 0 ? 'green' : 'red'}">${pl.toFixed(2)}</td>`;
+                });
+                drawMiniChart(totalPL); // todo implement
+                const dailyPL = calculateDailyPL();
+                if (dailyPL >= 10000) triggerConfetti();
+                updateTopBar();
+            } else if (tab === 'activity') {
+                const buyCol = document.querySelector('.buy-column');
+                const sellCol = document.querySelector('.sell-column');
+                buyCol.innerHTML = '';
+                sellCol.innerHTML = '';
+                Object.entries(holdings).forEach(([key, h]) => {
+                    const tile = createTile(h, 'buy');
+                    tile.dataset.key = key;
+                    buyCol.appendChild(tile);
+                    if (h.type === 'Option' && new Date(h.expiry) < new Date()) {
+                        const btn = document.createElement('button');
+                        btn.innerText = 'Expired';
+                        btn.onclick = () => expireOption(key);
+                        tile.appendChild(btn);
+                    }
+                });
+                trades.filter(t => t.action === 'Sell').forEach(t => sellCol.appendChild(createTile(t, 'sell')));
+            } else if (tab === 'analytics') {
+                buildCalendar();
+                drawRadarChart();
+                drawPieCharts();
+                drawSpiderWeb();
+            } else if (tab === 'simulator') {
+                simulateDrop(document.getElementById('drop-slider').value / 100);
+            }
+        }
+
+        function updateTopBar() {
+            document.getElementById('cash').innerText = cash.toFixed(2);
+            const remaining = settings.marginLimit + Math.max(0, -cash);
+            document.getElementById('margin').innerText = remaining.toFixed(2);
+        }
+
+        function createTile(data, type) {
+            const tile = document.createElement('div');
+            tile.classList.add('tile', `${type}-tile`);
+            tile.draggable = type === 'buy';
+            tile.ondragstart = (ev) => ev.dataTransfer.setData('key', data.key || JSON.stringify(data));
+            tile.innerText = `${data.ticker} x${data.qty} @${data.price.toFixed(2)}`;
+            // Size based on qty
+            const size = Math.sqrt(data.qty) * 5 + 50;
+            tile.style.width = `${size}px`;
+            tile.style.height = `${size / 2}px`;
+            // Color intensity based on conviction (qty relative to total portfolio)
+            const totalQty = Object.values(holdings).reduce((sum, h) => sum + h.qty, 0) || 1;
+            const intensity = Math.min(255, (data.qty / totalQty) * 255 + 100);
+            tile.style.background = type === 'buy' ? `rgba(0, ${intensity}, 0, 0.8)` : `rgba(${intensity}, 0, 0, 0.8)`;
+            return tile;
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function drop(ev) {
+            ev.preventDefault();
+            if (!ev.target.classList.contains('sell-column')) return;
+            const key = ev.dataTransfer.getData('key');
+            const h = holdings[key];
+            if (h) {
+                document.getElementById('trade-action').value = 'Sell';
+                document.getElementById('trade-ticker').value = h.ticker;
+                document.getElementById('trade-type').value = h.type;
+                document.getElementById('trade-qty').value = h.qty; // full, but can edit for partial
+                document.getElementById('trade-price').value = '';
+                if (h.type === 'Option') {
+                    document.getElementById('trade-strike').value = h.strike;
+                    document.getElementById('trade-expiry').value = h.expiry;
+                    document.getElementById('trade-callput').value = h.isCall ? 'Call' : 'Put';
+                }
+                showModal();
+                // After save, it will handle partial if qty < h.qty by the logic in updateHoldings
+            }
+        }
+
+        function expireOption(key) {
+            const h = holdings[key];
+            if (confirm('Confirm expiration? Value set to 0.')) {
+                // Add sell trade with price 0
+                const trade = { ...h, action: 'Sell', qty: h.qty, price: 0, date: new Date().toISOString().split('T')[0] };
+                const tx = db.transaction('trades', 'readwrite');
+                tx.objectStore('trades').add(trade).onsuccess = loadTrades;
+            }
+        }
+
+        // Confetti
+        class Confetto {
+            constructor(x, y, velocityX, velocityY) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 10 + 5;
+                this.colors = ['#FFFFFF', '#FFD700', '#00FF00']; // white, gold, green
+                this.color = this.colors[Math.floor(Math.random() * this.colors.length)];
+                this.velocityX = velocityX * 0.5;
+                this.velocityY = velocityY * 0.5;
+                this.gravity = 0.1;
+                this.drag = 0.99;
+                this.timeToLive = 5000;
+            }
+            draw(ctx) {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+            update(deltaTime) {
+                this.x += this.velocityX;
+                this.velocityX *= this.drag;
+                this.y += this.velocityY;
+                this.velocityY += this.gravity;
+                this.size = Math.max(0, this.size - (this.size * deltaTime) / this.timeToLive);
+            }
+        }
+
+        function triggerConfetti() {
+            const canvas = document.getElementById('confetti-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const ctx = canvas.getContext('2d');
+            for (let i = 0; i < 200; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height / 2;
+                const vx = Math.random() * 20 - 10;
+                const vy = Math.random() * -20 - 10;
+                confettos.push(new Confetto(x, y, vx, vy));
+            }
+            let lastTime = performance.now();
+            function animate() {
+                const currentTime = performance.now();
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                confettos.forEach((c, index) => {
+                    c.update(deltaTime);
+                    c.draw(ctx);
+                    if (c.size <= 0) confettos.splice(index, 1);
+                });
+                if (confettos.length > 0) requestAnimationFrame(animate);
+            }
+            animate();
+            setTimeout(() => confettos = [], 5000);
+        }
+
+        // Advisor
+        function triggerAdvisor() {
+            let message = '';
+            // Simple rules
+            const lastTrades = trades.slice(-5);
+            if (lastTrades.some(t => t.action === 'Sell' && calculatePL(t) < 0)) message = 'Paper hands—too quick! Diamond hands would\'ve mooned that.';
+            else if (lastTrades.some(t => t.action === 'Sell' && calculatePL(t) > 0)) message = 'Nice rug pull dodge.';
+            if (message) alert(message);
+            // Badges todo: store in settings, pop up
+        }
+
+        function calculatePL(trade) {
+            // Todo: match buy and sell for realized PL
+            return 0; // placeholder
+        }
+
+        function calculateDailyPL() {
+            // Todo: compute today's PL
+            return Math.random() * 20000 - 10000; // fake for testing
+        }
+
+        // Demo
+        function toggleDemo() {
+            settings.demoMode = !settings.demoMode;
+            saveSettings();
+            if (settings.demoMode) loadDemoData();
+            else {
+                const tx = db.transaction('trades', 'readwrite');
+                tx.objectStore('trades').clear().onsuccess = loadTrades;
+            }
+        }
+
+        function loadDemoData() {
+            const demoTrades = [
+                { date: '2025-09-01', ticker: 'TSLA', action: 'Buy', qty: 100, price: 200, type: 'Stock' },
+                { date: '2025-09-05', ticker: 'NVDA', action: 'Buy', qty: 50, price: 400, type: 'Stock' },
+                { date: '2025-09-10', ticker: 'TSLA', action: 'Sell', qty: 50, price: 220, type: 'Stock' },
+                { date: '2025-09-15', ticker: 'AAPL', action: 'Buy', qty: 200, price: 150, type: 'Stock' },
+                { date: '2025-09-20', ticker: 'SPY', action: 'Buy', qty: 10, price: 20, type: 'Option', strike: 400, expiry: '2025-12-31', isCall: false },
+                { date: '2025-09-25', ticker: 'TSLA', action: 'Buy', qty: 1, price: 65, type: 'Option', strike: 440, expiry: '2025-12-31', isCall: true },
+            ];
+            const tx = db.transaction('trades', 'readwrite');
+            const store = tx.objectStore('trades');
+            demoTrades.forEach(t => store.add(t));
+            tx.oncomplete = loadTrades;
+        }
+
+        // CSV
+        function exportCSV() {
+            let csv = 'date,ticker,action,qty,price,type,P/L\n';
+            trades.forEach(t => csv += `${t.date},${t.ticker},${t.action},${t.qty},${t.price},${t.type},${calculatePL(t)}\n`);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'plaid_portfolio.csv';
+            a.click();
+        }
+
+        function importCSV(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const lines = e.target.result.split('\n').slice(1);
+                const tx = db.transaction('trades', 'readwrite');
+                const store = tx.objectStore('trades');
+                lines.forEach(line => {
+                    if (!line) return;
+                    const [date, ticker, action, qty, price, type] = line.split(',');
+                    const trade = { date, ticker, action, qty: parseFloat(qty), price: parseFloat(price), type };
+                    store.add(trade);
+                });
+                tx.oncomplete = loadTrades;
+            };
+            reader.readAsText(file);
+        }
+
+        // Simulator
+        async function simulateDrop(drop) {
+            await updateCurrentPrices();
+            let newEquity = cash;
+            Object.values(holdings).forEach(h => {
+                let newValue;
+                const newS = (currentPrices[h.ticker] || h.avgCost) * (1 - drop);
+                if (h.type === 'Stock') {
+                    newValue = newS;
+                } else {
+                    const today = new Date();
+                    const expiry = new Date(h.expiry);
+                    const days = Math.max(0, (expiry - today) / (1000 * 60 * 60 * 24));
+                    const T = days / 365;
+                    const r = 0.05;
+                    const sigma = 0.3;
+                    newValue = blackScholes(newS, h.strike, T, r, sigma, h.isCall);
+                }
+                newEquity += newValue * h.qty;
+            });
+            document.getElementById('equity-line').innerText = `Estimated Equity: $${newEquity.toFixed(2)}`;
+            if (newEquity < settings.marginLimit * 0.25) { // arbitrary threshold
+                document.getElementById('simulator').style.background = 'rgba(255,0,0,0.2)';
+                const toAdd = (settings.marginLimit * 0.25 - newEquity) + 1;
+                document.getElementById('suggestions').innerText = `Add $${toAdd.toFixed(2)} cash to avoid margin call.`;
+            } else {
+                document.getElementById('simulator').style.background = 'none';
+                document.getElementById('suggestions').innerText = '';
+            }
+        }
+
+        // Analytics placeholders
+        function buildCalendar() {
+            const div = document.getElementById('calendar');
+            div.innerHTML = '';
+            for (let i = 0; i < 35; i++) { // 5 weeks
+                const day = document.createElement('div');
+                day.style.width = '30px';
+                day.style.height = '30px';
+                day.style.background = Math.random() > 0.5 ? 'green' : 'red';
+                div.appendChild(day);
+            }
+        }
+
+        function drawRadarChart() {
+            // Todo: implement canvas drawing for radar
+            const ctx = document.getElementById('radar-chart').getContext('2d');
+            ctx.fillText('Radar Chart Placeholder', 10, 50);
+        }
+
+        function drawPieCharts() {
+            // Todo: implement
+            const ctx1 = document.getElementById('pie-ticker').getContext('2d');
+            ctx1.fillText('Pie Ticker', 10, 50);
+            const ctx2 = document.getElementById('pie-asset').getContext('2d');
+            ctx2.fillText('Pie Asset', 10, 50);
+        }
+
+        function drawSpiderWeb() {
+            // Todo
+            const ctx = document.getElementById('spider-web').getContext('2d');
+            ctx.fillText('Spider Web Placeholder', 10, 50);
+        }
+
+        function drawMiniChart(pl) {
+            // Todo
+            const ctx = document.getElementById('mini-chart').getContext('2d');
+            ctx.fillText('Mini Chart Placeholder', 10, 50);
+        }
+
+        // Initial load
+        switchTab('dashboard');
+    </script>
+</body>
+</html>
