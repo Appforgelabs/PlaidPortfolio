@@ -2,6 +2,7 @@ okay, we solved a lot of errors. the app actually works for the first time.
 However, I am going to jot down some of the errors that i see that we will need to solve together. 
 Help me summarize my ask for AI to help me fix, improve the functionality of the app further.
 Do not jump into coding at the moment
+I really like the way this app looks, so do not change the appearance of this app.
 
 Dashboard
 - top ribbon, i need the sum of the total holding shown as well.
@@ -14,15 +15,53 @@ Activity tab
 for example, I have 3 TSLA $450 strike expiry 10-04-2025 at $5 premium per contract, I add 1 TSLA $450 strike expiry 10-04-2025 at $10 premium per contract at later date. They should combine to show 4 TSLA $450 strike expiry 10-04-2025 now cost average $6.25 premium per contract as one tile
 - when I sell call, it should locked 100 shares of the underlying asset
 for example, I have 213 shares of TSLA, I sell 1 TSLA call at strike $500 expiry 10-04-2026 at premium gain of $105 per contract. I now have 100 TSLA shares which i can not sell. Max i can now sell is 113 shares out of the 213 shares of TSLA until the Sold call expires or I buy it back at higher or lower premium (which will determine my P&L) Locked shared should be shown for that particular asset in the dashboard (in quick stats)
-- In order to close a sell call position, I will move the tile from Sell postions to Buy positions side, at this moment, i need a pop up window which asks for two things if the option expired (yes or no), premium paid to close the contract (this can be higher or lower which helps calculate P&L)
+- In order to close a sell call position, I will move the tile from Sell postions to Buy positions side, at this moment, i need a pop up window which asks for three things if the option excercised selection (true or false), option expired (yes or no), premium paid to close the contract (this can be higher or lower which helps calculate P&L)
 for example, I sold 1 TSLA call at $450 strike, expiring 10-04-2025 for the premium gain of $20 per contract. In order to close this position, I will move this tile to Buy, the pop window asked me if the option expired (yes or no), if I select "yes" i do not need to enter anything else at this point, I keep the original premium that i gained which is $20 per contract, realizing $2000 profit. 
 In different scenario, If i close this position before the expiry date, I would most likely select "no" for option expired , which will allow my enter the premium paid per contract, in this case I am paying $10 per contract to close this position. Original premium gain $20 - $10 (buy to close) = $10 per contract which equated to $1000 gain in realized profit.
+If option excercized is selected true, then the premium gained by selling the option is kept, and the user will be prompted to take action to remove 100 shares of the underlying asset appropriately.
+- the above logic will be applied to put option appropriately 
 
 - when i move the tile to close a position, it should also active a little X icon in the top right corner, when pressing the icon, it will remove the tile from the view
 
 - I should be able to sell all the contracts or stocks that were combined in the single tile or broken apart, either way
 
-- tile spliting should have option to choose qty or ability to pick qty from the share lots 
-for example, I bought TSLA shares at three different times and in different qty, 
+- tile spliting should have pop up option to choose qty or ability to pick qty from the share lots 
+for example, I bought TSLA shares at three different times and in different qty, first, TSLA Qty 100 bought at $300, second TSLA qty 50 bought at $330, third TSLA Qty 100 bought at $350, my combined single tile should that i have TSLA Qty 250 shares at $326 average cost.
+if i click split tiles, I am presented with option to enter qty to split or pick qty from the share lots.
+if i just go with qty to split, I enter qty 10. In this case now i have one small tile TSLA Qty 10 showing the highest price first, TSLA Qty 10 at $350, my bigger tile looks like this TSLA qty 240 at $325 (a newly caclulated average of the group)
+if I decide to pick from the share lots, I will be shown all the share lots, in this case, I have three TSLA order qty at three distinct price. Here I will be allowed to pick qty from any of those lots. 
+So, i choose to pick 10 qty to split from share lot TSLA Qty 50, $330. I now have one small tile TSLA Qty 10, $330 and one single lager tile showing TSLA Qty 240 at $325.83 (new average cost of the group)
+
+- Always use numbers upto two decimal points for average stock price or premium
+
+- The tile showing contracts are not fully showing all the important values. (refer to the screenshot) and adjust accordingly
+
+- only show + icon "add trade" in the activity tab to remove confusion to the user
+
+- Not a big deal, but i noticed i am unable to sell contracts in demo mode unless i split the tile
+
+Ledger tab
+
+- Allow edits of the sold price in the ledger tab only for the closed positions since someone could make mistake entering values in the activity tab
+
+- Show buy and sell price for stocks and buy options
+- For sold options, it would be reversed, buy would be zero if the option expired worthless or gets excercised (unless you can think of better approach)
+
+Analytics tab
+
+- Trading calendar
+- The dates need to fill in to carry over the next month of previous month to show exactly 5 working days. 
+- the week P&L summation will stay on the right most column
+- I also want a line chart that shows your overall balance with time chart. (this will not include margin)
+
+Settings, 
+
+- I should able to update additional cash and margin which remebers my previous entries and adjust the total accordingly.
+at the moment if i change my margin or cash balance, after having a bunch of entries, it is resetting all to a new value, disregarding the current holdings.
+
+
+
+
+
 
 
