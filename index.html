@@ -74,6 +74,10 @@
         th {
             background-color: #333;
         }
+        #calendar-table th, #calendar-table td {
+            width: 16.66%;
+            text-align: center;
+        }
         .positions {
             display: flex;
             justify-content: space-between;
@@ -164,17 +168,18 @@
             display: none;
             box-shadow: 0 0 10px #0000ff; /* Blue glow */
         }
-        /* Chart placeholders - in real impl, use Canvas or lib, but for pure JS, simulate */
+        /* Chart placeholders */
         .chart {
             height: 200px;
             background: #333;
             margin: 20px 0;
             border-radius: 8px;
         }
-        /* Radar and Pie charts would need JS canvas */
         canvas {
             width: 100%;
             height: 300px;
+            background: #333;
+            border-radius: 8px;
         }
         .slider {
             width: 100%;
@@ -503,7 +508,6 @@
             const d1 = (Math.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * Math.sqrt(T));
             const d2 = d1 - sigma * Math.sqrt(T);
             const normCDF = (x) => {
-                // Approximation for cumulative distribution function
                 const t = 1 / (1 + 0.2316419 * Math.abs(x));
                 const d = 0.3989423 * Math.exp(-x * x / 2);
                 let prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
@@ -543,12 +547,19 @@
             const date = document.getElementById('trade-date').value;
             const ticker = document.getElementById('trade-ticker').value.toUpperCase();
             const type = document.getElementById('trade-type').value;
-            const quantity = parseFloat(document.getElementById('trade-quantity').value);
-            const price = parseFloat(document.getElementById('trade-price').value);
+            const quantityInput = document.getElementById('trade-quantity').value;
+            const priceInput = document.getElementById('trade-price').value;
+            const quantity = parseFloat(quantityInput);
+            const price = parseFloat(priceInput);
             let strike = null, expiry = null;
             if (type !== 'Stock') {
                 strike = parseFloat(document.getElementById('trade-strike').value);
                 expiry = document.getElementById('trade-expiry').value;
+            }
+
+            if (!date || !ticker || isNaN(quantity) || isNaN(price) || (type !== 'Stock' && (isNaN(strike) || !expiry))) {
+                alert('Please fill all required fields with valid values.');
+                return;
             }
 
             const isBuy = type.includes('Buy') || type === 'Stock';
@@ -597,18 +608,20 @@
                 if (isOption) {
                     const key = `${ticker}-${type}-${strike}-${expiry}`;
                     if (!holdings.options[key]) {
-                        holdings.options[key] = { ticker, type, strike, expiry, contracts: 0, avgPremium: 0, current: 0 };
+                        holdings.options[key] = { ticker, type, strike, expiry, contracts: 0, avgPremium: 0, current: price };
                     }
                     const opt = holdings.options[key];
                     opt.avgPremium = (opt.avgPremium * opt.contracts + price * quantity) / (opt.contracts + quantity);
                     opt.contracts += quantity;
+                    opt.current = price; // Initial current
                 } else {
                     if (!holdings.stocks[ticker]) {
-                        holdings.stocks[ticker] = { shares: 0, avgCost: 0, current: 0 };
+                        holdings.stocks[ticker] = { shares: 0, avgCost: 0, current: price };
                     }
                     const stock = holdings.stocks[ticker];
                     stock.avgCost = (stock.avgCost * stock.shares + price * quantity) / (stock.shares + quantity);
                     stock.shares += quantity;
+                    stock.current = price; // Initial current
                 }
             }
 
@@ -641,17 +654,19 @@
             stockBody.innerHTML = '';
             for (let ticker in holdings.stocks) {
                 const stock = holdings.stocks[ticker];
-                const pl = (stock.current - stock.avgCost) * stock.shares;
-                const change = ((stock.current - stock.avgCost) / stock.avgCost * 100).toFixed(2);
-                stockBody.innerHTML += `<tr><td>${ticker}</td><td>${stock.shares}</td><td>$${stock.avgCost.toFixed(2)}</td><td>$${stock.current.toFixed(2)}</td><td>${pl > 0 ? '+' : ''}$${pl.toFixed(2)}</td><td>${change}%</td></tr>`;
+                const current = stock.current || stock.avgCost;
+                const pl = (current - stock.avgCost) * stock.shares;
+                const change = ((current - stock.avgCost) / stock.avgCost * 100).toFixed(2);
+                stockBody.innerHTML += `<tr><td>${ticker}</td><td>${stock.shares}</td><td>$${stock.avgCost.toFixed(2)}</td><td>$${current.toFixed(2)}</td><td>${pl > 0 ? '+' : ''}$${pl.toFixed(2)}</td><td>${change}%</td></tr>`;
             }
 
             const optBody = document.getElementById('options-holdings').querySelector('tbody');
             optBody.innerHTML = '';
             for (let key in holdings.options) {
                 const opt = holdings.options[key];
-                const pl = (opt.current - opt.avgPremium) * opt.contracts * 100;
-                optBody.innerHTML += `<tr><td>${opt.ticker}</td><td>${opt.type}</td><td>$${opt.strike}/${opt.expiry}</td><td>${opt.contracts}</td><td>$${opt.avgPremium.toFixed(2)}</td><td>$${opt.current.toFixed(2)}</td><td>${pl > 0 ? '+' : ''}$${pl.toFixed(2)}</td></tr>`;
+                const current = opt.current || opt.avgPremium;
+                const pl = (current - opt.avgPremium) * opt.contracts * 100;
+                optBody.innerHTML += `<tr><td>${opt.ticker}</td><td>${opt.type}</td><td>$${opt.strike}/${opt.expiry}</td><td>${opt.contracts}</td><td>$${opt.avgPremium.toFixed(2)}</td><td>$${current.toFixed(2)}</td><td>${pl > 0 ? '+' : ''}$${pl.toFixed(2)}</td></tr>`;
             }
 
             // Update tiles for Activity tab
@@ -742,13 +757,19 @@
 
         // Confirm Sale
         function confirmSale() {
-            const sellPrice = parseFloat(document.getElementById('sell-price').value);
-            if (!sellPrice) return;
+            const sellPriceInput = document.getElementById('sell-price').value;
+            const sellPrice = parseFloat(sellPriceInput);
+            if (isNaN(sellPrice)) {
+                alert('Invalid sell price');
+                return;
+            }
 
             // Calculate P/L
             const tile = window.currentSellTile;
-            const qty = parseFloat(tile.querySelector('div:nth-child(2)').textContent.match(/Qty: (\d+)/)[1]);
-            const buyPrice = parseFloat(tile.querySelector('div:nth-child(2)').textContent.match(/@ \$([\d.]+)/)[1]);
+            const qtyMatch = tile.querySelector('div:nth-child(2)').textContent.match(/Qty: ([\d.]+)/);
+            const buyPriceMatch = tile.querySelector('div:nth-child(2)').textContent.match(/@ \$([\d.]+)/);
+            const qty = parseFloat(qtyMatch[1]);
+            const buyPrice = parseFloat(buyPriceMatch[1]);
             const pl = (sellPrice - buyPrice) * qty;
             dailyPL += pl;
             if (pl > 0) wins++;
@@ -771,8 +792,11 @@
                 holdings.stocks[ticker].shares -= qty;
                 if (holdings.stocks[ticker].shares <= 0) delete holdings.stocks[ticker];
             } else {
-                const key = `${ticker}-${type}-${tile.querySelector('div:nth-child(3)')?.textContent.split(' ')[1]}-${tile.querySelector('div:nth-child(3)')?.textContent.split(' ')[3]}`;
-                holdings.options[key].contracts -= qty / 100; // Assuming contracts
+                const strikeExp = tile.querySelector('div:nth-child(3)') ? tile.querySelector('div:nth-child(3)').textContent : '';
+                const strikeMatch = strikeExp.match(/Strike: \$([\d.]+)/);
+                const expMatch = strikeExp.match(/Exp: ([\d-]+)/);
+                const key = `${ticker}-${type}-${strikeMatch ? strikeMatch[1] : ''}-${expMatch ? expMatch[1] : ''}`;
+                holdings.options[key].contracts -= qty; // Quantity is contracts for options
                 if (holdings.options[key].contracts <= 0) delete holdings.options[key];
             }
 
@@ -793,20 +817,23 @@
         }
 
         function splitPosition() {
-            const splitQty = parseFloat(document.getElementById('split-quantity').value);
-            if (!splitQty) return;
+            const splitQtyInput = document.getElementById('split-quantity').value;
+            const splitQty = parseFloat(splitQtyInput);
+            if (isNaN(splitQty) || splitQty <= 0) return;
 
             const tile = window.currentSplitTile;
-            const qty = parseFloat(tile.querySelector('div:nth-child(2)').textContent.match(/Qty: (\d+)/)[1]);
+            const qtyMatch = tile.querySelector('div:nth-child(2)').textContent.match(/Qty: ([\d.]+)/);
+            const qty = parseFloat(qtyMatch[1]);
             if (splitQty >= qty) return;
 
             // Create new tile with splitQty
             const newTile = tile.cloneNode(true);
-            newTile.querySelector('div:nth-child(2)').textContent = `Qty: ${splitQty} @ ${tile.querySelector('div:nth-child(2)').textContent.match(/@ \$([\d.]+)/)[0]}`;
+            const priceMatch = tile.querySelector('div:nth-child(2)').textContent.match(/@ \$([\d.]+)/);
+            newTile.querySelector('div:nth-child(2)').textContent = `Qty: ${splitQty} @ $${priceMatch[1]}`;
             tile.parentNode.appendChild(newTile);
 
             // Update original
-            tile.querySelector('div:nth-child(2)').textContent = `Qty: ${qty - splitQty} @ ${tile.querySelector('div:nth-child(2)').textContent.match(/@ \$([\d.]+)/)[0]}`;
+            tile.querySelector('div:nth-child(2)').textContent = `Qty: ${qty - splitQty} @ $${priceMatch[1]}`;
 
             // Update holdings (DCA remains same)
             setupDragAndDrop();
@@ -850,39 +877,58 @@
             updateStats();
         }
 
-        let currentMonth = new Date().getMonth();
-        let currentYear = new Date().getFullYear();
+        let currentMonth = 8; // September (0-indexed)
+        let currentYear = 2025;
 
         function updateCalendar() {
-            document.getElementById('calendar-month').textContent = `${new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' })} ${currentYear}`;
+            const monthName = new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' });
+            document.getElementById('calendar-month').textContent = `${monthName} ${currentYear}`;
             const tbody = document.getElementById('calendar-table').querySelector('tbody');
             tbody.innerHTML = '';
 
-            const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+            const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
             const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
             let row = document.createElement('tr');
             let day = 1;
+            let colIndex = 0;
 
-            // Fill empty cells for Mon-Fri only
-            for (let i = 0; i < firstDay - 1; i++) { // Assuming Sun=0, Mon=1
-                if (i >= 0 && i < 5) row.innerHTML += '<td></td>'; // Only Mon-Fri
+            // Fill empty cells for days before the first day (only Mon-Fri)
+            let startCol = (firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1); // Adjust for Sun=0
+            for (let i = 0; i < startCol; i++) {
+                row.innerHTML += '<td></td>';
+                colIndex++;
             }
 
             while (day <= daysInMonth) {
-                for (let i = firstDay - 1; i < 5; i++) { // Mon-Fri
-                    if (day > daysInMonth) break;
+                // Add day if it's Mon-Fri (check weekday)
+                const currentWeekday = new Date(currentYear, currentMonth, day).getDay();
+                if (currentWeekday >= 1 && currentWeekday <= 5) { // Mon-Fri
                     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const dayPL = calculateDayPL(dateStr);
                     const color = dayPL > 0 ? 'green' : dayPL < 0 ? 'red' : '';
                     row.innerHTML += `<td style="color: ${color};">${day}</td>`;
-                    day++;
+                    colIndex++;
                 }
-                // Weekly total
-                const weekPL = 0; // Calculate
-                row.innerHTML += `<td>${weekPL}</td>`;
+                day++;
+
+                if (colIndex === 5) {
+                    // Add week total
+                    const weekPL = 0; // Placeholder for week PL calculation
+                    row.innerHTML += `<td>${weekPL}</td>`;
+                    tbody.appendChild(row);
+                    row = document.createElement('tr');
+                    colIndex = 0;
+                }
+            }
+
+            // Fill remaining cells in last row
+            while (colIndex < 5) {
+                row.innerHTML += '<td></td>';
+                colIndex++;
+            }
+            if (colIndex > 0) {
+                row.innerHTML += '<td>0</td>'; // Last week total
                 tbody.appendChild(row);
-                row = document.createElement('tr');
-                firstDay = 1;
             }
         }
 
@@ -908,48 +954,105 @@
             updateCalendar();
         }
 
-        // Charts (Using Canvas - simple placeholders)
+        // Charts
         function updateCharts() {
             // Radar Chart
             const radarCtx = document.getElementById('radar-chart').getContext('2d');
-            // Simulate data: win rate, risk/reward, consistency, hold time, profit factor, max drawdown
-            const radarData = [50, 2, 80, 5, 1.5, 10]; // Placeholder
+            // Sample data: win rate, risk/reward, consistency, hold time, profit factor, max drawdown (normalized 0-100)
+            const radarData = [ (wins / totalTrades * 100) || 0, 50, 70, 30, 60, 20 ]; // Placeholders
             drawRadar(radarCtx, radarData);
 
             // Pie Chart
             const pieCtx = document.getElementById('pie-chart').getContext('2d');
-            const pieData = Object.keys(holdings.stocks).map(t => holdings.stocks[t].shares * holdings.stocks[t].avgCost);
-            const pieLabels = Object.keys(holdings.stocks);
+            const pieData = [];
+            const pieLabels = [];
+            let other = 0;
+            for (let ticker in holdings.stocks) {
+                pieData.push(holdings.stocks[ticker].shares * holdings.stocks[ticker].avgCost);
+                pieLabels.push(ticker);
+            }
+            for (let key in holdings.options) {
+                other += holdings.options[key].contracts * 100 * holdings.options[key].avgPremium;
+            }
+            if (other > 0) {
+                pieData.push(other);
+                pieLabels.push('Options');
+            }
             drawPie(pieCtx, pieData, pieLabels);
         }
 
         function drawRadar(ctx, data) {
-            // Simple radar drawing (for demo)
+            const centerX = ctx.canvas.width / 2;
+            const centerY = ctx.canvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+            const numPoints = data.length;
+            const angleSlice = (2 * Math.PI) / numPoints;
+
+            // Draw background lines
+            ctx.strokeStyle = '#555';
+            for (let i = 0; i < numPoints; i++) {
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(centerX + radius * Math.cos(i * angleSlice), centerY + radius * Math.sin(i * angleSlice));
+                ctx.stroke();
+            }
+
+            // Draw data polygon
             ctx.beginPath();
-            // ... implement polygon based on data
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+            ctx.strokeStyle = '#00ff00';
+            for (let i = 0; i < numPoints; i++) {
+                const pointRadius = (data[i] / 100) * radius;
+                const x = centerX + pointRadius * Math.cos(i * angleSlice);
+                const y = centerY + pointRadius * Math.sin(i * angleSlice);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.fill();
             ctx.stroke();
-            // Labels: win rate, etc.
+
+            // Labels
+            const labels = ['Win Rate', 'Risk/Reward', 'Consistency', 'Hold Time', 'Profit Factor', 'Max Drawdown'];
+            ctx.fillStyle = '#e0e0e0';
+            for (let i = 0; i < numPoints; i++) {
+                const labelRadius = radius + 10;
+                const x = centerX + labelRadius * Math.cos(i * angleSlice) - 20;
+                const y = centerY + labelRadius * Math.sin(i * angleSlice);
+                ctx.fillText(labels[i], x, y);
+            }
         }
 
         function drawPie(ctx, data, labels) {
             let total = data.reduce((a, b) => a + b, 0);
+            if (total === 0) {
+                ctx.fillStyle = '#e0e0e0';
+                ctx.fillText('No Data', ctx.canvas.width / 2 - 30, ctx.canvas.height / 2);
+                return;
+            }
             let startAngle = 0;
+            const colors = ['#00ff00', '#ff0000', '#ffd700', '#0000ff', '#ff00ff', '#00ffff'];
             data.forEach((val, i) => {
-                ctx.fillStyle = ['#00ff00', '#ff0000', '#ffd700', '#0000ff'][i % 4];
+                ctx.fillStyle = colors[i % colors.length];
                 const sliceAngle = (val / total) * 2 * Math.PI;
                 ctx.beginPath();
                 ctx.moveTo(ctx.canvas.width / 2, ctx.canvas.height / 2);
                 ctx.arc(ctx.canvas.width / 2, ctx.canvas.height / 2, Math.min(ctx.canvas.width / 2, ctx.canvas.height / 2), startAngle, startAngle + sliceAngle);
                 ctx.closePath();
                 ctx.fill();
+                // Label
+                const textAngle = startAngle + sliceAngle / 2;
+                const textX = ctx.canvas.width / 2 + (ctx.canvas.width / 4) * Math.cos(textAngle);
+                const textY = ctx.canvas.height / 2 + (ctx.canvas.height / 4) * Math.sin(textAngle);
+                ctx.fillStyle = '#121212';
+                ctx.fillText(labels[i], textX, textY);
                 startAngle += sliceAngle;
             });
-            // Add labels
         }
 
         function updateStats() {
-            // Calculate stats
-            const profitFactor = 1.0; // Placeholder
+            // Placeholder calculations
+            const profitFactor = totalTrades > 0 ? (dailyPL / Math.abs(dailyPL) || 1) : 0; // Simplified
             const maxDrawdown = 0;
             const avgHoldTime = 0;
             const riskReward = 0;
@@ -975,7 +1078,7 @@
             for (let key in holdings.options) {
                 const opt = holdings.options[key];
                 const S = opt.avgPremium * (1 - drop / 100); // Approximate underlying drop
-                const T = (new Date(opt.expiry) - new Date()) / (365 * 24 * 3600 * 1000);
+                const T = Math.max(0, (new Date(opt.expiry) - new Date()) / (365 * 24 * 3600 * 1000));
                 const type = opt.type.toLowerCase().includes('call') ? 'call' : 'put';
                 opt.current = blackScholes(S, opt.strike, T, 0.05, 0.3, type);
                 newPortfolio += opt.contracts * 100 * opt.current;
@@ -1014,44 +1117,65 @@
         // Demo Data
         function loadDemoData(checked) {
             if (checked && !demoLoaded) {
-                // Load sample trades for 30 days
-                const today = new Date();
+                // Use fixed current date: September 29, 2025
+                const today = new Date(2025, 8, 29); // Month 8 is September
                 for (let i = 1; i <= 30; i++) {
                     const date = new Date(today);
                     date.setDate(today.getDate() - i);
                     const dateStr = date.toISOString().split('T')[0];
                     const tickers = ['TSLA', 'NVDA', 'AAPL', 'SPY'];
                     const ticker = tickers[Math.floor(Math.random() * 4)];
-                    const type = Math.random() > 0.5 ? 'Stock' : ['Buy Call', 'Sell Call', 'Buy Put', 'Sell Put'][Math.floor(Math.random() * 4)];
+                    // Only buy types to avoid collateral issues in demo
+                    const buyTypes = ['Stock', 'Buy Call', 'Buy Put'];
+                    const type = buyTypes[Math.floor(Math.random() * 3)];
                     const quantity = Math.floor(Math.random() * 10) + 1;
-                    const price = Math.random() * 100 + 100;
-                    const strike = type !== 'Stock' ? Math.round(price * (0.9 + Math.random() * 0.2)) : null;
-                    const expiryDate = new Date(date);
-                    expiryDate.setDate(date.getDate() + Math.floor(Math.random() * 90) + 30);
-                    const expiry = type !== 'Stock' ? expiryDate.toISOString().split('T')[0] : null;
+                    const price = (Math.random() * 100 + 100).toFixed(2);
+                    let strike = null, expiry = null;
+                    if (type !== 'Stock') {
+                        strike = Math.round(price * (0.9 + Math.random() * 0.2));
+                        const expiryDate = new Date(date);
+                        expiryDate.setDate(date.getDate() + Math.floor(Math.random() * 90) + 30);
+                        expiry = expiryDate.toISOString().split('T')[0];
+                    }
 
-                    // Simulate addTrade logic without exceeding limits
+                    // Simulate cost check
                     const cost = type !== 'Stock' ? price * 100 * quantity : price * quantity;
                     if (cost > cash + margin) continue;
 
-                    const trade = { date: dateStr, action: type.includes('Buy') || type === 'Stock' ? 'Buy' : 'Sell', ticker, type, quantity, price, total: cost, pl: 0, balance: cash + margin - lockedCollateral };
+                    // Add trade manually for demo
+                    const trade = { date: dateStr, action: 'Buy', ticker, type, quantity, price: parseFloat(price), total: cost, pl: 0, balance: cash + margin - lockedCollateral };
                     trades.push(trade);
 
-                    // Update holdings simply for demo
+                    // Deduct cost
+                    if (cost <= cash) {
+                        cash -= cost;
+                    } else {
+                        margin -= (cost - cash);
+                        cash = 0;
+                    }
+
+                    // Update holdings
                     if (type === 'Stock') {
-                        if (!holdings.stocks[ticker]) holdings.stocks[ticker] = { shares: 0, avgCost: 0 };
-                        holdings.stocks[ticker].shares += quantity;
-                        holdings.stocks[ticker].avgCost = price;
+                        if (!holdings.stocks[ticker]) holdings.stocks[ticker] = { shares: 0, avgCost: 0, current: parseFloat(price) };
+                        const stock = holdings.stocks[ticker];
+                        stock.avgCost = (stock.avgCost * stock.shares + parseFloat(price) * quantity) / (stock.shares + quantity);
+                        stock.shares += quantity;
+                        stock.current = parseFloat(price);
                     } else {
                         const key = `${ticker}-${type}-${strike}-${expiry}`;
-                        if (!holdings.options[key]) holdings.options[key] = { ticker, type, strike, expiry, contracts: 0, avgPremium: 0 };
-                        holdings.options[key].contracts += quantity;
-                        holdings.options[key].avgPremium = price;
+                        if (!holdings.options[key]) holdings.options[key] = { ticker, type, strike, expiry, contracts: 0, avgPremium: 0, current: parseFloat(price) };
+                        const opt = holdings.options[key];
+                        opt.avgPremium = (opt.avgPremium * opt.contracts + parseFloat(price) * quantity) / (opt.contracts + quantity);
+                        opt.contracts += quantity;
+                        opt.current = parseFloat(price);
                     }
+
+                    totalTrades++;
                 }
                 demoLoaded = true;
                 saveData();
                 updateUI();
+                if (totalTrades >= 5) showAIAdvisor();
             }
         }
 
@@ -1081,9 +1205,20 @@
                     const [date, action, ticker, type, quantity, price, total, pl, balance] = lines[i].split(',');
                     trades.push({ date, action, ticker, type, quantity: parseFloat(quantity), price: parseFloat(price), total: parseFloat(total), pl: parseFloat(pl), balance: parseFloat(balance) });
                 }
-                // Rebuild holdings from trades (simplified)
+                // Rebuild holdings from trades (simplified, assume rebuild manually or skip for now)
                 holdings = { stocks: {}, options: {} };
-                // ... logic to rebuild
+                // To properly rebuild, loop through trades and apply logic similar to addTrade
+                trades.forEach(trade => {
+                    // Simplified rebuild for demo purposes
+                    if (trade.action === 'Buy') {
+                        if (trade.type === 'Stock') {
+                            if (!holdings.stocks[trade.ticker]) holdings.stocks[trade.ticker] = { shares: 0, avgCost: 0, current: trade.price };
+                            const stock = holdings.stocks[trade.ticker];
+                            stock.avgCost = (stock.avgCost * stock.shares + trade.price * trade.quantity) / (stock.shares + trade.quantity);
+                            stock.shares += trade.quantity;
+                        } // Add similar for options
+                    }
+                });
                 updateUI();
             };
             reader.readAsText(file);
@@ -1095,16 +1230,14 @@
             advisor.style.display = 'block';
             // Analyze patterns
             let message = '';
-            const holdTimes = []; // Calculate
-            if (avgHoldTime < 1) message = 'Paper hands!';
-            else if (avgHoldTime > 30) message = 'Diamond hands!';
-            // ... more logic
+            // Placeholder logic
+            if (totalTrades > 10) message = 'Nice rug pull dodge!';
+            else message = 'Keep HODLing!';
             advisor.textContent = `🤖 ${message}`;
         }
 
         // Confetti Animation
         function confettiAnimation() {
-            // Simple JS confetti (for demo)
             for (let i = 0; i < 100; i++) {
                 const conf = document.createElement('div');
                 conf.style.position = 'fixed';
@@ -1161,6 +1294,7 @@
             settingsStore.put({ key: 'apiEnabled', value: apiEnabled });
             settingsStore.put({ key: 'apiProvider', value: apiProvider });
             settingsStore.put({ key: 'apiKey', value: apiKey });
+            settingsStore.put({ key: 'demoLoaded', value: demoLoaded });
         }
 
         function loadData() {
@@ -1182,8 +1316,13 @@
             settingsStore.get('apiEnabled').onsuccess = (e) => apiEnabled = e.target.result?.value || false;
             settingsStore.get('apiProvider').onsuccess = (e) => apiProvider = e.target.result?.value || 'None';
             settingsStore.get('apiKey').onsuccess = (e) => apiKey = e.target.result?.value || '';
+            settingsStore.get('demoLoaded').onsuccess = (e) => demoLoaded = e.target.result?.value || false;
 
             tx.oncomplete = () => {
+                if (trades.length === 0 && !demoLoaded) {
+                    loadDemoData(true);
+                    document.getElementById('demo-mode').checked = true;
+                }
                 updateUI();
                 if (totalTrades >= 5) showAIAdvisor();
             };
