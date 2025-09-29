@@ -1,0 +1,28 @@
+okay, we solved a lot of errors. the app actually works for the first time.
+However, I am going to jot down some of the errors that i see that we will need to solve together. 
+Help me summarize my ask for AI to help me fix, improve the functionality of the app further.
+Do not jump into coding at the moment
+
+Dashboard
+- top ribbon, i need the sum of the total holding shown as well.
+- provide ability to edit current prices right in the dashboard if the API integration is disabled in the settings tab
+- total qty of shares and avg cost needs to be updated based on the activity tab trades, which is not updating at the moment
+
+
+Activity tab
+- when i add additional contract for the same strike price and expiry for the same ticker, they are not combining
+for example, I have 3 TSLA $450 strike expiry 10-04-2025 at $5 premium per contract, I add 1 TSLA $450 strike expiry 10-04-2025 at $10 premium per contract at later date. They should combine to show 4 TSLA $450 strike expiry 10-04-2025 now cost average $6.25 premium per contract as one tile
+- when I sell call, it should locked 100 shares of the underlying asset
+for example, I have 213 shares of TSLA, I sell 1 TSLA call at strike $500 expiry 10-04-2026 at premium gain of $105 per contract. I now have 100 TSLA shares which i can not sell. Max i can now sell is 113 shares out of the 213 shares of TSLA until the Sold call expires or I buy it back at higher or lower premium (which will determine my P&L) Locked shared should be shown for that particular asset in the dashboard (in quick stats)
+- In order to close a sell call position, I will move the tile from Sell postions to Buy positions side, at this moment, i need a pop up window which asks for two things if the option expired (yes or no), premium paid to close the contract (this can be higher or lower which helps calculate P&L)
+for example, I sold 1 TSLA call at $450 strike, expiring 10-04-2025 for the premium gain of $20 per contract. In order to close this position, I will move this tile to Buy, the pop window asked me if the option expired (yes or no), if I select "yes" i do not need to enter anything else at this point, I keep the original premium that i gained which is $20 per contract, realizing $2000 profit. 
+In different scenario, If i close this position before the expiry date, I would most likely select "no" for option expired , which will allow my enter the premium paid per contract, in this case I am paying $10 per contract to close this position. Original premium gain $20 - $10 (buy to close) = $10 per contract which equated to $1000 gain in realized profit.
+
+- when i move the tile to close a position, it should also active a little X icon in the top right corner, when pressing the icon, it will remove the tile from the view
+
+- I should be able to sell all the contracts or stocks that were combined in the single tile or broken apart, either way
+
+- tile spliting should have option to choose qty or ability to pick qty from the share lots 
+for example, I bought TSLA shares at three different times and in different qty, 
+
+
