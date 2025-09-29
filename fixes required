@@ -6,6 +6,7 @@ I really like the way this app looks, so do not change the appearance of this ap
 
 Dashboard
 - top ribbon, i need the sum of the total holding shown as well.
+- top ribbon, show undo, redo and save action buttons
 - provide ability to edit current prices right in the dashboard if the API integration is disabled in the settings tab
 - total qty of shares and avg cost needs to be updated based on the activity tab trades, which is not updating at the moment
 
