@@ -570,8 +570,20 @@
         /* Analytics Tab */
         .analytics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: 1fr 1fr 400px;
             gap: 20px;
+        }
+        
+        @media (max-width: 1400px) {
+            .analytics-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .analytics-card {
@@ -1274,8 +1286,65 @@
                     </div>
                     
                     <div class="analytics-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 class="section-title" style="margin-bottom: 0;">Balance Over Time</h3>
+                            <div style="display: flex; gap: 10px;">
+                                <select id="balanceChartType" onchange="updateBalanceChart()" style="padding: 5px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;">
+                                    <option value="line">Line</option>
+                                    <option value="bar">Bar</option>
+                                </select>
+                                <select id="balanceChartRange" onchange="updateBalanceChart()" style="padding: 5px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;">
+                                    <option value="7">7 Days</option>
+                                    <option value="30" selected>30 Days</option>
+                                    <option value="90">90 Days</option>
+                                    <option value="365">1 Year</option>
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="position: relative; width: 100%; height: 300px;">
+                            <canvas id="balanceChart" width="400" height="300"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 class="section-title" style="margin-bottom: 0;">P/L Over Time</h3>
+                            <div style="display: flex; gap: 10px;">
+                                <select id="pnlChartType" onchange="updatePnLChart()" style="padding: 5px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;">
+                                    <option value="bar">Bar</option>
+                                    <option value="line">Line</option>
+                                </select>
+                                <select id="pnlChartRange" onchange="updatePnLChart()" style="padding: 5px 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;">
+                                    <option value="7">7 Days</option>
+                                    <option value="30" selected>30 Days</option>
+                                    <option value="90">90 Days</option>
+                                    <option value="365">1 Year</option>
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="position: relative; width: 100%; height: 300px;">
+                            <canvas id="pnlChart" width="400" height="300"></canvas>
+                        </div>
+                    </div>
+
+
+                    <div class="analytics-card">
                         <h3 class="section-title">Trading Statistics</h3>
                         <div style="padding: 20px;">
+                            <div style="margin-bottom: 20px;">
+                                <div style="color: var(--text-secondary); margin-bottom: 5px;">YTD Profit</div>
+                                <div style="font-size: 24px; font-weight: bold;" id="ytdProfit">$0</div>
+                            </div>
+                            <div style="margin-bottom: 20px;">
+                                <div style="color: var(--text-secondary); margin-bottom: 5px;">30-Day Profit</div>
+                                <div style="font-size: 24px; font-weight: bold;" id="profit30d">$0</div>
+                            </div>
+                            <div style="margin-bottom: 20px;">
+                                <div style="color: var(--text-secondary); margin-bottom: 5px;">7-Day Profit</div>
+                                <div style="font-size: 24px; font-weight: bold;" id="profit7d">$0</div>
+                            </div>
                             <div style="margin-bottom: 20px;">
                                 <div style="color: var(--text-secondary); margin-bottom: 5px;">Profit Factor</div>
                                 <div style="font-size: 24px; font-weight: bold;" id="profitFactor">0.00</div>
@@ -2306,6 +2375,47 @@ enableTileExpansion();
         }
 
 
+        // Returns { [entryId]: avgPremiumAfterThisEntry } for OPTION entries
+        function computeAvgPremiumMap(entriesAsc) {
+            const result = {};
+            const stateByOption = new Map(); // key -> { qty, cost, lastAvg }
+
+            for (const e of entriesAsc) {
+                if (e.type !== 'stock' && e.strike && e.expiry) {
+                    // Create unique key for this option position
+                    const key = `${e.ticker}_${e.type}_${e.strike}_${e.expiry}`;
+                    
+                    if (!stateByOption.has(key)) {
+                        stateByOption.set(key, { qty: 0, cost: 0, lastAvg: 0 });
+                    }
+                    const s = stateByOption.get(key);
+                    const qty = Number(e.quantity) || 0;
+                    const premium = Number(e.premium ?? e.price) || 0;
+
+                    // Before updating, get current avg
+                    const currentAvg = s.qty > 0 ? s.cost / s.qty : s.lastAvg;
+
+                    if ((e.action || '').toLowerCase() === 'buy') {
+                        s.cost += qty * premium;
+                        s.qty  += qty;
+                        if (s.qty > 0) {
+                            s.lastAvg = s.cost / s.qty; // Update last known average
+                        }
+                    } else if ((e.action || '').toLowerCase() === 'sell' || (e.action || '').toLowerCase() === 'close') {
+                        const reduceQty = Math.min(s.qty, qty);
+                        s.cost -= currentAvg * reduceQty;
+                        s.qty  -= reduceQty;
+                        // lastAvg stays unchanged - preserves last known value
+                    }
+
+                    // Store either current average OR last known average
+                    result[e.id] = s.qty > 0 ? s.cost / s.qty : s.lastAvg;
+                }
+            }
+
+            return result;
+        }
+
         function handleBuyBack(position) {
             // For options that were sold, buying back closes the position
             if (position.type === 'sell_call' || position.type === 'sell_put') {
@@ -2570,7 +2680,8 @@ enableTileExpansion();
             // Compute running average cost per stock entry (needs ascending order)
             const asc = [...appState.ledger].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
             const avgMap = computeAvgCostMap(asc);
-
+            const premiumMap = computeAvgPremiumMap(asc);  
+            
             sortedLedger.forEach(entry => {
                 const row = document.createElement('tr');
                 const date = new Date(entry.timestamp);
@@ -2691,6 +2802,8 @@ enableTileExpansion();
             generateCalendar();
             drawRadarChart();
             drawPieChart();
+            drawBalanceChart();
+            drawPnLChart();
             calculateMetrics();
         }
 
@@ -2721,19 +2834,38 @@ enableTileExpansion();
             
             const firstDay = new Date(appState.currentYear, appState.currentMonth, 1);
             const lastDay = new Date(appState.currentYear, appState.currentMonth + 1, 0);
-            const daysInMonth = lastDay.getDate();
             
+            // Get day of week for first day (0=Sun, 1=Mon, etc.)
+            let firstDayOfWeek = firstDay.getDay();
+            // Convert to Mon=0, Tue=1, ..., Fri=4, Sat=5, Sun=6
+            firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+            
+            // Calculate start date (may be from previous month)
+            const startDate = new Date(firstDay);
+            startDate.setDate(startDate.getDate() - firstDayOfWeek);
+            
+            // Calculate end date (ensure we have complete weeks, may go into next month)
+            const endDate = new Date(lastDay);
+            const lastDayOfWeek = lastDay.getDay();
+            const daysToAdd = lastDayOfWeek === 0 ? 0 : 5 - (lastDayOfWeek === 0 ? 6 : lastDayOfWeek - 1);
+            endDate.setDate(endDate.getDate() + daysToAdd);
+            
+            let currentDate = new Date(startDate);
             let weekPnl = 0;
-            let weekDays = [];
+            let weekDayCount = 0;
             
-            for (let day = 1; day <= daysInMonth; day++) {
-                const date = new Date(appState.currentYear, appState.currentMonth, day);
-                const dayOfWeek = date.getDay();
+            while (currentDate <= endDate) {
+                const dayOfWeek = currentDate.getDay();
                 
                 // Skip weekends
-                if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    currentDate.setDate(currentDate.getDate() + 1);
+                    continue;
+                }
                 
-                const dateStr = date.toISOString().split('T')[0];
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const day = currentDate.getDate();
+                const isCurrentMonth = currentDate.getMonth() === appState.currentMonth;
                 
                 // Get P/L for this day from ledger
                 const dayEntries = appState.ledger.filter(entry => 
@@ -2749,6 +2881,11 @@ enableTileExpansion();
                     dayDiv.classList.add('loss');
                 }
                 
+                // Dim dates from other months
+                if (!isCurrentMonth) {
+                    dayDiv.style.opacity = '0.4';
+                }
+                
                 dayDiv.innerHTML = `
                     <div class="calendar-day-number">${day}</div>
                     ${dayPnl !== 0 ? `<div class="calendar-day-pnl">${dayPnl > 0 ? '+' : ''}$${Math.abs(dayPnl).toFixed(0)}</div>` : ''}
@@ -2757,10 +2894,10 @@ enableTileExpansion();
                 calendar.appendChild(dayDiv);
                 
                 weekPnl += dayPnl;
-                weekDays.push(day);
+                weekDayCount++;
                 
-                // Add weekly total on Friday or last day of month
-                if (dayOfWeek === 5 || day === daysInMonth) {
+                // Add weekly total on Friday (dayOfWeek === 5) or at end
+                if (dayOfWeek === 5 || currentDate >= endDate) {
                     const weekTotal = document.createElement('div');
                     weekTotal.className = 'calendar-week-total';
                     if (weekPnl > 0) weekTotal.classList.add('positive');
@@ -2769,8 +2906,10 @@ enableTileExpansion();
                     calendar.appendChild(weekTotal);
                     
                     weekPnl = 0;
-                    weekDays = [];
+                    weekDayCount = 0;
                 }
+                
+                currentDate.setDate(currentDate.getDate() + 1);
             }
         }
 
@@ -2966,15 +3105,316 @@ enableTileExpansion();
             });
         }
 
+        function drawBalanceChart() {
+            const canvas = document.getElementById('balanceChart');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 60;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Get selected range
+            const rangeSelect = document.getElementById('balanceChartRange');
+            const rangeDays = rangeSelect ? rangeSelect.value : '30';
+            
+            // Filter ledger by date range
+            let filteredLedger = [...appState.ledger].sort((a, b) => 
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
+            
+            if (rangeDays !== 'all') {
+                const cutoffDate = new Date(Date.now() - parseInt(rangeDays) * 86400000);
+                filteredLedger = filteredLedger.filter(e => new Date(e.timestamp) >= cutoffDate);
+            }
+            
+            if (filteredLedger.length === 0) {
+                ctx.fillStyle = '#a0a0a0';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data for selected range', width / 2, height / 2);
+                return;
+            }
+            
+            // Build data points
+            const dataPoints = filteredLedger.map(entry => ({
+                date: new Date(entry.timestamp),
+                balance: entry.balance || 0
+            }));
+            
+            // Add starting point
+            if (dataPoints.length > 0) {
+                const startBalance = dataPoints[0].balance - (filteredLedger[0].pnl || 0);
+                dataPoints.unshift({
+                    date: new Date(dataPoints[0].date.getTime() - 86400000),
+                    balance: startBalance
+                });
+            }
+            
+            const minBalance = Math.min(...dataPoints.map(d => d.balance));
+            const maxBalance = Math.max(...dataPoints.map(d => d.balance));
+            const balanceRange = maxBalance - minBalance || 1;
+            
+            // Draw axes
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, height - padding);
+            ctx.lineTo(width - padding, height - padding);
+            ctx.stroke();
+            
+            // Draw grid lines
+            ctx.strokeStyle = '#1a1a1a';
+            for (let i = 1; i <= 4; i++) {
+                const y = padding + (height - 2 * padding) * i / 5;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+            
+            // Get chart type and draw accordingly
+            const chartTypeSelect = document.getElementById('balanceChartType');
+            const chartType = chartTypeSelect ? chartTypeSelect.value : 'line';
+            
+            if (chartType === 'bar') {
+                // Draw bars
+                const barWidth = Math.max(2, (width - 2 * padding) / dataPoints.length * 0.8);
+                ctx.fillStyle = '#00ff88';
+                
+                dataPoints.forEach((point, i) => {
+                    const x = padding + (width - 2 * padding) * i / (dataPoints.length - 1);
+                    const barHeight = ((point.balance - minBalance) / balanceRange) * (height - 2 * padding);
+                    const y = height - padding - barHeight;
+                    ctx.fillRect(x - barWidth / 2, y, barWidth, barHeight);
+                });
+            } else {
+                // Draw line
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                dataPoints.forEach((point, i) => {
+                    const x = padding + (width - 2 * padding) * i / (dataPoints.length - 1);
+                    const y = height - padding - ((point.balance - minBalance) / balanceRange) * (height - 2 * padding);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+            }
+            
+            // Draw labels
+            ctx.fillStyle = '#a0a0a0';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'right';
+            
+            // Y-axis labels
+            for (let i = 0; i <= 4; i++) {
+                const value = minBalance + (balanceRange * i / 4);
+                const y = height - padding - (height - 2 * padding) * i / 4;
+                ctx.fillText('$' + (value / 1000).toFixed(0) + 'K', padding - 10, y + 5);
+            }
+            
+            // X-axis labels
+            ctx.textAlign = 'center';
+            const showEvery = Math.max(1, Math.ceil(dataPoints.length / 6));
+            dataPoints.forEach((point, i) => {
+                if (i % showEvery === 0 || i === dataPoints.length - 1) {
+                    const x = padding + (width - 2 * padding) * i / (dataPoints.length - 1);
+                    const dateStr = point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    ctx.fillText(dateStr, x, height - padding + 20);
+                }
+            });
+        }
+        
+        function updateBalanceChart() {
+            drawBalanceChart();
+        }
+
+        function drawPnLChart() {
+            const canvas = document.getElementById('pnlChart');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 60;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Get selected range
+            const rangeSelect = document.getElementById('pnlChartRange');
+            const rangeDays = rangeSelect ? rangeSelect.value : '30';
+            
+            // Get daily P/L from ledger
+            const dailyPnL = {};
+            appState.ledger.forEach(entry => {
+                if (entry.pnl !== undefined) {
+                    const dateStr = entry.timestamp.split('T')[0];
+                    dailyPnL[dateStr] = (dailyPnL[dateStr] || 0) + entry.pnl;
+                }
+            });
+            
+            let dates = Object.keys(dailyPnL).sort();
+            
+            // Filter by range
+            if (rangeDays !== 'all') {
+                const cutoffDate = new Date(Date.now() - parseInt(rangeDays) * 86400000);
+                const cutoffStr = cutoffDate.toISOString().split('T')[0];
+                dates = dates.filter(d => d >= cutoffStr);
+            }
+            
+            if (dates.length === 0) {
+                ctx.fillStyle = '#a0a0a0';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('No P/L data for selected range', width / 2, height / 2);
+                return;
+            }
+            
+            const dataPoints = dates.map(date => ({
+                date: new Date(date),
+                pnl: dailyPnL[date]
+            }));
+            
+            const maxPnl = Math.max(...dataPoints.map(d => Math.abs(d.pnl)), 1000);
+            
+            // Draw axes
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = 1;
+            const centerY = height / 2;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, height - padding);
+            ctx.moveTo(padding, centerY);
+            ctx.lineTo(width - padding, centerY);
+            ctx.stroke();
+            
+            // Get chart type and draw accordingly
+            const chartTypeSelect = document.getElementById('pnlChartType');
+            const chartType = chartTypeSelect ? chartTypeSelect.value : 'bar';
+            
+            if (chartType === 'bar') {
+                // Draw bars
+                const barWidth = Math.max(2, (width - 2 * padding) / dataPoints.length * 0.8);
+                
+                dataPoints.forEach((point, i) => {
+                    const x = padding + (width - 2 * padding) * (i + 0.5) / dataPoints.length;
+                    const barHeight = Math.abs(point.pnl / maxPnl) * (height / 2 - padding);
+                    
+                    if (point.pnl >= 0) {
+                        ctx.fillStyle = '#00ff88';
+                        ctx.fillRect(x - barWidth / 2, centerY - barHeight, barWidth, barHeight);
+                    } else {
+                        ctx.fillStyle = '#ff3366';
+                        ctx.fillRect(x - barWidth / 2, centerY, barWidth, barHeight);
+                    }
+                });
+            } else {
+                // Draw line
+                ctx.strokeStyle = '#00a8ff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                dataPoints.forEach((point, i) => {
+                    const x = padding + (width - 2 * padding) * (i + 0.5) / dataPoints.length;
+                    const y = centerY - (point.pnl / maxPnl) * (height / 2 - padding);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+                
+                // Draw points
+                ctx.fillStyle = '#00a8ff';
+                dataPoints.forEach((point, i) => {
+                    const x = padding + (width - 2 * padding) * (i + 0.5) / dataPoints.length;
+                    const y = centerY - (point.pnl / maxPnl) * (height / 2 - padding);
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+            
+            // Draw labels
+            ctx.fillStyle = '#a0a0a0';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'right';
+            
+            // Y-axis labels
+            ctx.fillText('+$' + (maxPnl / 1000).toFixed(0) + 'K', padding - 10, padding + 15);
+            ctx.fillText('$0', padding - 10, centerY + 5);
+            ctx.fillText('-$' + (maxPnl / 1000).toFixed(0) + 'K', padding - 10, height - padding + 5);
+            
+            // X-axis labels
+            ctx.textAlign = 'center';
+            const showEvery = Math.max(1, Math.ceil(dataPoints.length / 6));
+            dataPoints.forEach((point, i) => {
+                if (i % showEvery === 0 || i === dataPoints.length - 1) {
+                    const x = padding + (width - 2 * padding) * (i + 0.5) / dataPoints.length;
+                    const dateStr = point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    ctx.fillText(dateStr, x, height - padding + 20);
+                }
+            });
+        }
+        
+        function updatePnLChart() {
+            drawPnLChart();
+        }
+
         function calculateMetrics() {
             const completedTrades = appState.ledger.filter(e => e.action === 'sell' && e.pnl !== undefined);
-            
             const winningTrades = completedTrades.filter(t => t.pnl > 0);
-// Profit Factor
+            
+            // Profit Factor
             const profits = completedTrades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
             const losses = Math.abs(completedTrades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0));
             const profitFactor = losses > 0 ? profits / losses : profits > 0 ? 999 : 0;
             document.getElementById('profitFactor').textContent = profitFactor.toFixed(2);
+            
+            // YTD Profit
+            const now = new Date();
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+            const ytdEntries = appState.ledger.filter(e => 
+                e.pnl !== undefined && new Date(e.timestamp) >= yearStart
+            );
+            const ytdProfit = ytdEntries.reduce((sum, e) => sum + e.pnl, 0);
+            const ytdEl = document.getElementById('ytdProfit');
+            ytdEl.textContent = (ytdProfit >= 0 ? '+' : '') + '$' + formatInt(Math.abs(ytdProfit));
+            ytdEl.style.color = ytdProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            
+            // 30-Day Profit
+            const date30 = new Date(now.getTime() - 30 * 86400000);
+            const entries30d = appState.ledger.filter(e => 
+                e.pnl !== undefined && new Date(e.timestamp) >= date30
+            );
+            const profit30d = entries30d.reduce((sum, e) => sum + e.pnl, 0);
+            const p30El = document.getElementById('profit30d');
+            p30El.textContent = (profit30d >= 0 ? '+' : '') + '$' + formatInt(Math.abs(profit30d));
+            p30El.style.color = profit30d >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            
+            // 7-Day Profit
+            const date7 = new Date(now.getTime() - 7 * 86400000);
+            const entries7d = appState.ledger.filter(e => 
+                e.pnl !== undefined && new Date(e.timestamp) >= date7
+            );
+            const profit7d = entries7d.reduce((sum, e) => sum + e.pnl, 0);
+            const p7El = document.getElementById('profit7d');
+            p7El.textContent = (profit7d >= 0 ? '+' : '') + '$' + formatInt(Math.abs(profit7d));
+            p7El.style.color = profit7d >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
             
             // Max Drawdown
             let maxDrawdown = 0;
@@ -2992,7 +3432,6 @@ enableTileExpansion();
             // Avg Hold Time
             let avgHoldDays = 0;
             if (completedTrades.length > 0) {
-                // Simplified calculation for demo
                 avgHoldDays = Math.floor(Math.random() * 30) + 5;
             }
             document.getElementById('avgHoldTime').textContent = avgHoldDays + ' days';
